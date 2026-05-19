@@ -1,0 +1,73 @@
+# Run commands from /home/adhil/github/UniKP
+
+# 1. Build or reuse all UniKP embedding caches on physical GPU 1.
+CUDA_VISIBLE_DEVICES=1 python emulator_bench/cache_embeddings.py \
+  --device cuda:0 \
+  --base_dir /home/adhil/github/EMULaToR/data/processed/baselines/UniKP \
+  --embeddings_dir /home/adhil/github/EMULaToR/data/processed/baselines/UniKP/embeddings
+
+# 2. Build or reuse split feature matrices from cached embeddings.
+conda run -n mldb python emulator_bench/build_split_features.py \
+  --base_dir /home/adhil/github/EMULaToR/data/processed/baselines/UniKP \
+  --embeddings_dir /home/adhil/github/EMULaToR/data/processed/baselines/UniKP/embeddings
+
+# 3. Primary current workflow: parallel original-setting multirun retraining.
+#    num_workers = concurrent sklearn processes.
+#    model_n_jobs = CPU threads used inside each ExtraTreesRegressor.
+CUDA_VISIBLE_DEVICES=1 conda run -n mldb python emulator_bench/launch_parallel_retrain_original.py \
+  --base_dir /home/adhil/github/EMULaToR/data/processed/baselines/UniKP \
+  --embeddings_dir /home/adhil/github/EMULaToR/data/processed/baselines/UniKP/embeddings \
+  --cache_device cuda:0 \
+  --seeds 0 1 2 3 4 \
+  --num_workers 4 \
+  --model_n_jobs 8
+
+# 4. Resume after interruption.
+#    Rerun the same command. Existing caches, feature matrices, and completed runs are skipped.
+CUDA_VISIBLE_DEVICES=1 python emulator_bench/launch_parallel_retrain_original.py \
+  --base_dir /home/adhil/github/EMULaToR/data/processed/baselines/UniKP_Kcat \
+  --embeddings_dir /home/adhil/github/EMULaToR/data/processed/baselines/UniKP_Kcat/embeddings \
+  --cache_device cuda:0 \
+  --seeds 666 777 888 \
+  --num_workers 4 \
+  --model_n_jobs 8
+
+CUDA_VISIBLE_DEVICES=1 python emulator_bench/launch_parallel_retrain_original.py \
+  --base_dir /home/adhil/github/EMULaToR/data/processed/baselines/UniKP_Km \
+  --embeddings_dir /home/adhil/github/EMULaToR/data/processed/baselines/UniKP_Km/embeddings \
+  --cache_device cuda:0 \
+  --seeds 666 777 888 \
+  --num_workers 4 \
+  --model_n_jobs 8
+
+# 5. Smoke-test scale command. Uses separate feature/results names and only a few rows per split.
+CUDA_VISIBLE_DEVICES=1 conda run -n mldb python emulator_bench/launch_parallel_retrain_original.py \
+  --base_dir /home/adhil/github/EMULaToR/data/processed/baselines/UniKP \
+  --embeddings_dir /home/adhil/github/EMULaToR/data/processed/baselines/UniKP/embeddings_smoke \
+  --feature_dirname feature_matrices_smoke \
+  --results_dirname unikp_smoke_retrain \
+  --cache_device cuda:0 \
+  --split_groups random_splits_grouped_sequence \
+  --max_rows_per_split 4 \
+  --seeds 0 \
+  --num_workers 1 \
+  --model_n_jobs 2 \
+  --feature_overwrite
+
+# 6. Optional later-use Optuna tuning. Requires feature matrices to exist.
+conda run -n mldb python emulator_bench/tune_optuna.py \
+  --base_dir /home/adhil/github/EMULaToR/data/processed/baselines/UniKP \
+  --split_groups random_splits_grouped_sequence \
+  --seeds 0 \
+  --model_n_jobs 8 \
+  --n_trials 20 \
+  --study_name unikp_optuna_random_sequence
+
+# 7. Optional later-use retrain from Optuna best hyperparameters.
+conda run -n mldb python emulator_bench/launch_parallel_retrain_from_optuna.py \
+  --base_dir /home/adhil/github/EMULaToR/data/processed/baselines/UniKP \
+  --hparams_json /home/adhil/github/EMULaToR/data/processed/baselines/UniKP/optuna_studies/unikp_optuna_random_sequence_best_hparams.json \
+  --split_groups random_splits_grouped_sequence \
+  --seeds 0 1 2 3 4 \
+  --num_workers 4 \
+  --model_n_jobs 8
