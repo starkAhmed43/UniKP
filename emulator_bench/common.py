@@ -325,7 +325,12 @@ def summarize_seed_runs(rows: List[Dict], group_cols: List[str], metric_cols: Li
     if not present_metrics:
         return frame[group_cols].drop_duplicates()
     grouped = frame.groupby(group_cols, dropna=False)[present_metrics]
-    return grouped.agg(["mean", "std", "count"]).reset_index()
+    summary = grouped.agg(["mean", "std", "count"]).reset_index()
+    summary.columns = [
+        "_".join(str(part) for part in col if str(part)) if isinstance(col, tuple) else str(col)
+        for col in summary.columns
+    ]
+    return summary
 
 
 def configure_cpu_environment(model_n_jobs: Optional[int]) -> None:
